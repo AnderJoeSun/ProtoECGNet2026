@@ -1,9 +1,15 @@
 # ProtoECGNet2026
 
+> **Status.** Only this README is public at present. Every other file in this
+> repository — source code, the per-trial result tables and the environment
+> record — will be uploaded when the paper is published, and this README will
+> be replaced by its final version at the same time. Until then, the file
+> names and commands below describe what will be released.
+
 Code for
 
 > **Cross-Dataset Augmentation Improves External Generalisation for Rare-Rhythm Detection in ECG Sensor Signals: A Case Study on Atrial Flutter**
-> Joe Jianjun Shen et al. *Sensors* (under review), 2026.
+> Joe Shen et al., 2026. Manuscript in preparation.
 
 The study borrows atrial-flutter (AFLT) recordings from a donor dataset
 (Chapman–Shaoxing) into the training split of a target dataset (PTB-XL or SPH),
@@ -11,6 +17,14 @@ trains with a masked binary cross-entropy that supervises the borrowed records
 only on AFLT, and evaluates on two held-out external datasets (Georgia and
 CPSC-2018-Extra). This repository releases the **pure_clf** pipeline with the
 **resnet1d18** backbone, which produces every number in the paper.
+
+*pure_clf* means "classifier only": the plain multi-label classifier — the 1D
+ResNet backbone followed by a linear head, trained with (masked) binary
+cross-entropy — without ProtoECGNet's prototype layer, prototype losses and
+projection stage. It is `--training_stage pure_clf` in `src/main.py`. The paper
+studies where the AFLT supervision comes from, so it holds the architecture at
+this plain classifier; the prototype pipeline it is built on is retained in the
+repository but is not used for any result in the paper.
 
 It is built on [ProtoECGNet](https://github.com/bbj-lab/protoecgnet)
 (Sethi et al., MLHC 2025, MIT License). The upstream prototype pipeline is kept
@@ -60,10 +74,55 @@ constants in `src/my_config.py` and at the top of each `src/process_*.py`:
 
 | What | Path used in the code |
 |---|---|
-| PTB-XL raw | `/data/datasets/ptb-xl-v1.0.3/1.0.3` (metadata read from `ptbxl_database.ori.csv`) |
-| SPH raw | `/data/datasets/sph/sph_v2022` (metadata `metadata.ori.csv`, records under `records/`) |
+| PTB-XL raw | `/data/datasets/ptb-xl-v1.0.3/1.0.3` |
+| SPH raw | `/data/datasets/sph/sph_v2022` (records under `records/`) |
 | Challenge 2021 raw | `/data/datasets/physionet.org/files/challenge-2021/1.0.3/training/<dataset>` |
 | Preprocessed data, logs, checkpoints, test results | `/data/datasets/pp/<dataset>/...` |
+
+The two target datasets are read through a copy of their own label file, so
+that the file the preprocessing writes back never overwrites the one shipped by
+the provider:
+
+- PTB-XL: `my_config.PTBXL_V1_0_3_METADATA_PATH` points at
+  `ptbxl_database.ori.csv`, which is simply PTB-XL's own `ptbxl_database.csv`
+  (copy or rename it, or set the constant to `ptbxl_database.csv`).
+- SPH: `my_config.SPH_V2022_METADATA_PATH` points at `metadata.ori.csv`, which
+  is SPH's own `metadata.csv` (same choice).
+
+### The `pp` tree
+
+`pp` stands for *preprocessing*: `/data/datasets/pp/` holds the preprocessed
+version of all five datasets, plus everything the runs write. One directory per
+dataset, with the same layout:
+
+```
+/data/datasets/pp/
+├── ptbxl/ptbxl_v1.0.3/                 # target   (my_config.PTBXL_V1_0_3_PREPROCESSING_DIR)
+├── sph/sph_v2022/                      # target   (my_config.SPH_V2022_PREPROCESSING_DIR)
+├── chapman_shaoxing/chapman_shaoxing_v2021/   # AFLT donor
+├── georgia/georgia_v2021/              # external test
+└── cpsc/cpsc_2018_extra/               # external test
+```
+
+Inside each dataset directory:
+
+```
+metadata.csv                 one row per record: labels, split, processing status
+ecg_data_500hz/              raw signal at the native rate, as .npy
+ecg_data_500hz_cleaned/      after NeuroKit2 cleaning, still at 500 Hz
+ecg_data_100hz_cleaned/      after resampling to 100 Hz
+ecg_data_100hz_cn/           cleaned + per-lead z-normalised; this is what training reads
+*_plot/, comparison/         inspection plots written alongside each stage
+```
+
+The two target directories also carry the run outputs:
+
+```
+/data/datasets/pp/<ptbxl|sph>/
+├── logs/           per-run TensorBoard logs and the per-class metrics the analysis scripts read
+├── checkpoints/    per-run model weights
+└── test_results/   per-sample predictions: internal test split and both external sets
+```
 
 The Optuna studies (`optuna_pureclf_*.db`) are created in the repository root
 by the pipeline. They are not distributed.
@@ -76,12 +135,16 @@ donor additionally passes the per-lead signal-quality filter
 (Supplementary S1.1).
 
 ```bash
-python3 src/process_ptbxl_1.0.3.py         # target: PTB-XL
-python3 src/process_sph.py                 # target: SPH
-python3 src/process_chapman_shaoxing.py    # donor: Chapman–Shaoxing
+python3 src/process_ptbxl_1.0.3.py         # target: PTB-XL   (+ the donor)
+python3 src/process_sph.py                 # target: SPH      (+ the donor)
 python3 src/process_georgia.py             # external: Georgia
 python3 src/process_cpsc_2018_extra.py     # external: CPSC-2018-Extra
 ```
+
+`src/process_chapman_shaoxing.py` is not run on its own. The two target scripts
+import `aug_aflt_chapman_shaoxing()` from it and call it while they build their
+preprocessed metadata, so the donor's AFLT records are prepared and appended in
+the same pass (`PP_PTBXL_V1_0_3` and `PP_SPH_V2022` respectively).
 
 Five-dataset AFLT leakage audit (paper Table 2):
 
@@ -225,20 +288,10 @@ unchanged.
 
 ## 9. Citation
 
-```bibtex
-@article{shen2026aflt,
-  title   = {Cross-Dataset Augmentation Improves External Generalisation for
-             Rare-Rhythm Detection in ECG Sensor Signals: A Case Study on Atrial Flutter},
-  author  = {Shen, Joe Jianjun and others},
-  journal = {Sensors},
-  year    = {2026},
-  note    = {Under review}
-}
-```
-
-Please also cite ProtoECGNet (see `README_ProtoECGNet.md`).
+Citation details will be added here once the paper is published. Please also
+cite ProtoECGNet (see `README_ProtoECGNet.md`).
 
 ## 10. License
 
 MIT (see `LICENSE`). Upstream ProtoECGNet: Copyright (c) 2025 Sahil Sethi.
-This work: Copyright (c) 2026 Joe Jianjun Shen.
+This work: Copyright (c) 2026 Joe Shen.
