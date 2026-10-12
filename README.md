@@ -8,7 +8,7 @@
 
 Code for
 
-> **Cross-Dataset Augmentation Improves External Generalisation for Rare-Rhythm Detection in ECG Sensor Signals: A Case Study on Atrial Flutter**
+> **Label-Masked Cross-Dataset Augmentation Improves External Generalisation for Rare-Rhythm Detection in Multi-Label ECG Classification with Heterogeneous Label Spaces: Atrial Flutter as the Target Class**
 > Joe Shen et al., 2026. Manuscript in preparation.
 
 The study borrows atrial-flutter (AFLT) recordings from a donor dataset
